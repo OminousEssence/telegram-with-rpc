@@ -1,7 +1,7 @@
 from models.activity import Activity
 from services.bots import telegram
 from utils import formatter
-from config import MESSAGE_TASK_INVERVAL, TRY_AGAIN_INTERVAL
+from config import MESSAGE_TASK_INTERVAL, TRY_AGAIN_INTERVAL
 from aiogram.exceptions import TelegramAPIError
 from loguru import logger
 from colorama import Fore
@@ -49,24 +49,19 @@ class Message:
                         else:
                             try:
                                 await telegram.edit_text(self.chat_id, self.message_id, formatter.get_message_text(act))
-                            except:
-                                await telegram.delete_message(self.chat_id, self.message_id)
-                                await telegram.send_message(self.chat_id, formatter.get_message_text(act))
+                            except Exception:
+                                # If editing raw text fails, attempt an edit_media fallback instead of deleting
+                                await telegram.edit_media(self.chat_id, self.message_id, formatter.get_message_text(act))
                             self.last_img_hash = None
                 except TelegramAPIError as ex:
-                    logger.error(ex)
+                    logger.error(f"Telegram API Error during edit: {ex}")
                     await asyncio.sleep(TRY_AGAIN_INTERVAL)
 
                 except Exception as ex:
-                    logger.error(ex)
-                    if self.message_id is not None:
-                        try:
-                            await telegram.delete_message(self.chat_id, self.message_id)
-                            self.message_id = None
-                        except Exception as del_ex:
-                            logger.error(del_ex)
-                        self.message_id = await telegram.send_message(self.chat_id, formatter.get_message_text(act), act.assets.get_small_image())
-                        self.last_img_hash = small_hash
+                    # STRICT EDIT MODE: instead of deleting and recreating the message here,
+                    # log the formatting error, keep the message ID, and wait for the next tick.
+                    logger.error(f"Formatting or playback edit failed: {ex}")
+                    await asyncio.sleep(TRY_AGAIN_INTERVAL)
 
                 await asyncio.sleep(MESSAGE_TASK_INVERVAL)
         except: 
