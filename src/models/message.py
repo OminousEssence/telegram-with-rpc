@@ -63,6 +63,6 @@ class Message:
                     logger.error(f"Formatting or playback edit failed: {ex}")
                     await asyncio.sleep(TRY_AGAIN_INTERVAL)
 
-                await asyncio.sleep(MESSAGE_TASK_INVERVAL)
+                await asyncio.sleep(MESSAGE_TASK_INTERVAL)
         except: 
             pass
