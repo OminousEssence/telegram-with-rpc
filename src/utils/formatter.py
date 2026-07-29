@@ -2,11 +2,16 @@ from models.activity import Activity
 from discord import ActivityType
 from datetime import datetime
 from loguru import logger
+import re
 
 # timeline symbols
 TIMELINE_SYMBOL = "-"
 TIMELINE_POINTER = "●"
 TIMELINE_NUM_SEGMENTS = 20
+
+# Junk keywords patterns
+VIDEO_JUNK_PATTERN = r'official video|official music video|music video|lyric video|audio|remastered|deluxe edition|4k|hd|60fps|musical artist|official lyric video|Official Video 4K'
+GAME_JUNK_PATTERN = r'^Playing\s+on\s+[\w\d_-]+\s*-\s*|^Playing\s+on\s+[\w\d_-]+'
 
 def get_message_text(act: Activity):
     prefix = get_prefix(act.type)
@@ -17,32 +22,75 @@ def get_message_text(act: Activity):
         return format_act(act, prefix)
 
 def get_prefix(type: ActivityType):
-    prefix = "⌚"
+    prefix = "⏱️"
     if type == ActivityType.playing:
-        prefix = "🎮"
+        prefix = "⏱️"
     if type == ActivityType.watching:
-        prefix = "📺"
+        prefix = "⏱️"
     if type == ActivityType.listening:
-        prefix = "🎵"
+        prefix = "⏱️"
     return prefix
-    
-def format_act(act: Activity, time_prefix: str) -> str:
-    result = []
-    
-    if act.details:
-        result.append(f"- {act.details}")
-    if act.state:
-        result.append(f"- {act.state}")
-    if act.large_text:
-        if act.large_url:
-            result.append(f"<a href='{act.large_url}'>&gt; {act.large_text}</a>")
-        else:
-            result.append(f"- {act.large_text}")
-    
-    result.append(f"\r\n<b>{time_prefix} {act.get_elapsed_time()}</b>")
-    
-    return "\n".join(result)
 
+def clean_text(text: str) -> str:
+    # Removes video junk words, game RPC host device junk, surrounding brackets, and converts Season/Episode formats.
+    if not text:
+        return ""
+
+    # 1. Strip game device/platform prefixes ("Playing on - ")
+    text = re.sub(GAME_JUNK_PATTERN, '', text, flags=re.IGNORECASE).strip()
+
+    # 2. Convert Season X Episode Y -> (SX-EY)
+    season_pattern = r'[Ss]eason\s*(\d+)[,\s\-_]+[Ee]pisode\s*(\d+)'
+    def season_repl(match):
+        s_num, e_num = int(match.group(1)), int(match.group(2))
+        return f"(S{s_num:02d}-E{e_num:02d})"
+    
+    text = re.sub(season_pattern, season_repl, text)
+
+    # 3. Strip brackets/parentheses containing video junk keywords
+    text = re.sub(fr'\s*[\(\[]\s*(?:{VIDEO_JUNK_PATTERN})\s*[\)\]]', '', text, flags=re.IGNORECASE)
+    
+    # 4. Strip standalone video junk keywords
+    text = re.sub(fr'\s*(?:{VIDEO_JUNK_PATTERN})', '', text, flags=re.IGNORECASE)
+
+    return text.strip()
+
+def build_content_lines(act: Activity) -> list:
+    # Formats details (title) and state (artist) into clean Artist - Title lines
+    details = clean_text(act.details) if act.details else ""
+    state = clean_text(act.state) if act.state else ""
+    large_text = clean_text(act.large_text) if act.large_text else ""
+
+    lines = []
+
+    if details:
+        # If details or act.name already match after cleaning, avoid duplication
+        if ' - ' in details:
+            lines.append(f"{details}")
+        elif state:
+            if state.lower() in details.lower():
+                lines.append(f"{details}")
+            else:
+                lines.append(f"{state} - {details}")
+        else:
+            lines.append(f"{details}")
+    elif state:
+        lines.append(f"{state}")
+
+    # Ignore generic app names or text already shown in title
+    if large_text and large_text.lower() not in ["youtube", "youtube music", "spotify", "kodi"]:
+        if not any(large_text.lower() in line.lower() for line in lines):
+            if act.large_url:
+                lines.append(f"<a href='{act.large_url}'>&gt; {large_text}</a>")
+            else:
+                lines.append(f"{large_text}")
+
+    return lines
+
+def format_act(act: Activity, time_prefix: str) -> str:
+    result = build_content_lines(act)
+    result.append(f"\r\n<b>{time_prefix} {act.get_elapsed_time()}</b>")
+    return "\n".join(result)
 
 def format_tl_act(act: Activity) -> str:
     parts = []
@@ -50,25 +98,39 @@ def format_tl_act(act: Activity) -> str:
     for _ in range(TIMELINE_NUM_SEGMENTS):
         parts.append(TIMELINE_SYMBOL)
     
-    now = datetime.now(act.start_time.tzinfo)
+    now = datetime.now(act.start_time.tzinfo) if act.start_time else datetime.now()
     
-    segment_duration = act.track_length // TIMELINE_NUM_SEGMENTS
-    pointer_index = (now - act.start_time) // segment_duration
-    if pointer_index > len(parts) - 1:
-        pointer_index = len(parts) - 1
-    parts[pointer_index] = TIMELINE_POINTER
-    timeline = "".join(parts)
+    if act.track_length and act.start_time:
+        elapsed = now - act.start_time
 
-    result = [f"{act.get_elapsed_time()} {timeline} {act.get_track_length()}"]
+        #  Cap elapsed time so it doesn't overflow past track duration
+        if elapsed > act.track_length:
+            elapsed = act.track_length
 
-    if act.details:
-        result.append(f"- {act.details}")
-    if act.state:
-        result.append(f"- {act.state}")
-    if act.large_text:
-        if act.large_url:
-            result.append(f"<a href='{act.large_url}'>&gt; {act.large_text}</a>")
-        else:
-            result.append(f"- {act.large_text}")
+        #  Safely calculate segment position
+        segment_duration = act.track_length / TIMELINE_NUM_SEGMENTS
+        if segment_duration.total_seconds() > 0:
+            pointer_index = int(elapsed / segment_duration)
             
-    return "\n".join(result)
+            # Clamp index between 0 and TIMELINE_NUM_SEGMENTS - 1
+            pointer_index = max(0, min(pointer_index, TIMELINE_NUM_SEGMENTS - 1))
+            parts[pointer_index] = TIMELINE_POINTER
+
+        # Format elapsed string cleanly capped at track duration
+        total_sec = int(elapsed.total_seconds())
+        m, s = divmod(total_sec, 60)
+        h, m = divmod(m, 60)
+        elapsed_str = f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+    else:
+        elapsed_str = act.get_elapsed_time()
+
+    timeline = "".join(parts)
+    prefix = get_prefix(act.type)
+
+    # Get text lines
+    result = build_content_lines(act)
+
+    progress = f"{elapsed_str}{timeline}{act.get_track_length()}{prefix}"
+    result.append(f"\n{progress}")
+
+    return "\n\n".join(result)
