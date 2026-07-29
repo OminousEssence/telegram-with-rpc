@@ -9,8 +9,8 @@ TRY_AGAIN_INTERVAL = 10 # try again on telegram api timeout (s)
 ACTIVITY_TITLES = {
     ActivityType.playing: "🎮 Playing",
     ActivityType.listening: "🎵 Listening to",
-    ActivityType.watching: "Watching"
+    ActivityType.watching: "🎬 Watching"
 }
 
-ACT_NONE_TITLE = "No activity." # channel name when activity is None
+ACT_NONE_TITLE = "No activity" # channel name when activity is None
 SPOTIFY_LOGO_URL = "https://storage.googleapis.com/pr-newsroom-wp/1/2023/05/Spotify_Primary_Logo_RGB_Green.png"
