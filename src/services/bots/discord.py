@@ -38,7 +38,7 @@ async def init():
 
     @client.event
     async def on_ready():
-        logger.info(f'{client.user.name} has ready!')
+        logger.info(f'{client.user.name} is ready!')
         ready_event.set()
 
 def get_valid_act(acts):
@@ -68,7 +68,9 @@ async def handle_act(act):
     
     ret_act = Activity(act)
     
-    if ret_act.assets.large_image_url is None:
+    # Allow games (playing) to bypass the image check if they lack a cover/large image.
+    # Only enforce image assets for music/video/watching streams.
+    if act.type != discord.ActivityType.playing and ret_act.assets.large_image_url is None:
         if last_rpc_hash != None:
             last_rpc_hash = None
             await events.call(RPC_UPDATED, None)
