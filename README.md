@@ -1,3 +1,8 @@
+**Most edits are made with AI (Gemini). Do with that info what you will.**
+
+<details>
+  <summary>Original Readme</summary>
+  
 # Telegram RPC
 
 <img src="./res/vscode_rpc.png" width="500">
