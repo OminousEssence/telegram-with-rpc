@@ -7,14 +7,16 @@ from models.activity import Activity
 from models.message import Message
 from services.events import events, RPC_UPDATED
 from loguru import logger
-from config import MESSAGE_TASK_INVERVAL
+from config import MESSAGE_TASK_INTERVAL
 
-dotenv.load_dotenv() # load env
+dotenv.load_dotenv()
 
-if (MESSAGE_TASK_INVERVAL < 5):
+if (MESSAGE_TASK_INTERVAL < 5):
     logger.warning("The interval is too low. A timeout from Telegram is possible!")
 
-# == tasks ==
+pending_update_task: asyncio.Task | None = None
+latest_activity: Activity | None = None  # Cache latest state for recovery
+
 async def discord_task():
     await discord.init()
     await asyncio.gather(
@@ -27,19 +29,45 @@ async def telegram_task():
     await telegram.init()
     channel = Channel(telegram.CHAT_ID) # channel object
     message = Message(telegram.CHAT_ID) # message object
-    await telegram.start()
+    
+    # Start polling and auto-resync if connection resets
+    while True:
+        try:
+            await telegram.start()
+        except Exception as e:
+            logger.error(f"Telegram task disconnected: {e}. Reconnecting...")
+            await asyncio.sleep(5)
+            # Re-trigger state sync once reconnected
+            if latest_activity is not None:
+                asyncio.create_task(debounced_rpc_update(latest_activity))
 
-# == handlers ==
 @events.on_call(RPC_UPDATED)
 async def on_call(act: Activity):
-    if act is None:
-        await channel.reset()
-        await message.pause()
-    else:
-        await channel.update(act)
-        await message.run_task(act)
+    global pending_update_task, latest_activity
+    latest_activity = act  # Save current state
 
-# == main ==
+    if pending_update_task and not pending_update_task.done():
+        pending_update_task.cancel()
+        logger.trace("Rapid activity event detected. Resetting debounce timer...")
+
+    pending_update_task = asyncio.create_task(debounced_rpc_update(act))
+
+async def debounced_rpc_update(act: Activity):
+    try:
+        await asyncio.sleep(3)
+
+        if act is None:
+            await channel.reset()
+            await message.pause()
+        else:
+            await channel.update(act)
+            await message.run_task(act)
+
+    except asyncio.CancelledError:
+        pass
+    except Exception as ex:
+        logger.error(f"Error executing debounced RPC update: {ex}")
+
 async def main():
     tasks = [
         discord_task(),
