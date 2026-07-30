@@ -1,4 +1,6 @@
+import asyncio
 from typing import Callable
+from loguru import logger
 
 class EventSystem:
     def __init__(self):
@@ -14,8 +16,15 @@ class EventSystem:
 
     async def call(self, event_name: str, *args, **kwargs):
         if event_name in self._event_handlers:
-            for handler in self._event_handlers[event_name]:
-                await handler(*args, **kwargs)
+            # run all registered handlers concurrently
+            results = await asyncio.gather(
+                *(handler(*args, **kwargs) for handler in self._event_handlers[event_name]),
+                return_exceptions=True
+            )
+            # Log any exceptions without crashing other handlers
+            for res in results:
+                if isinstance(res, Exception):
+                    logger.error(f"Exception in event handler '{event_name}': {res}")
 
 events = EventSystem()
 
