@@ -32,14 +32,17 @@ def get_prefix(type: ActivityType):
     return prefix
 
 def clean_text(text: str) -> str:
-    # Removes video junk words, game RPC host device junk, surrounding brackets, and converts Season/Episode formats.
+    # Removes video junk words, game RPC host device info, surrounding brackets, and converts Season/Episode formats.
     if not text:
         return ""
+    
+    # 1. Strip newlines to prevent forced multi-line text
+    text = text.replace('\r', '').replace('\n', ' ')
 
-    # 1. Strip game device/platform prefixes ("Playing on - ")
+    # 2. Strip game device/platform prefixes ("Playing on - ")
     text = re.sub(GAME_JUNK_PATTERN, '', text, flags=re.IGNORECASE).strip()
 
-    # 2. Convert Season X Episode Y -> (SX-EY)
+    # 3. Convert Season X Episode Y -> (SX-EY)
     season_pattern = r'[Ss]eason\s*(\d+)[,\s\-_]+[Ee]pisode\s*(\d+)'
     def season_repl(match):
         s_num, e_num = int(match.group(1)), int(match.group(2))
@@ -47,37 +50,54 @@ def clean_text(text: str) -> str:
     
     text = re.sub(season_pattern, season_repl, text)
 
-    # 3. Strip brackets/parentheses containing video junk keywords
+    # 4. Strip brackets/parentheses containing video junk keywords
     text = re.sub(fr'\s*[\(\[]\s*(?:{VIDEO_JUNK_PATTERN})\s*[\)\]]', '', text, flags=re.IGNORECASE)
     
-    # 4. Strip standalone video junk keywords
+    # 5. Strip standalone video junk keywords
     text = re.sub(fr'\s*(?:{VIDEO_JUNK_PATTERN})', '', text, flags=re.IGNORECASE)
 
     return text.strip()
 
 def build_content_lines(act: Activity) -> list:
-    # Formats details (title) and state (artist) into clean Artist - Title lines
     details = clean_text(act.details) if act.details else ""
     state = clean_text(act.state) if act.state else ""
     large_text = clean_text(act.large_text) if act.large_text else ""
 
+    # Extract season/episode formatting if present
+    SEASON_FORMAT_REGEX = r'^\(S\d+-E\d+\)$'
+    season_info = ""
+    if state and re.match(SEASON_FORMAT_REGEX, state):
+        season_info = state
+        state = ""
+    elif large_text and re.match(SEASON_FORMAT_REGEX, large_text):
+        season_info = large_text
+        large_text = ""
+
     lines = []
+    full_title = ""
 
-    if details:
-        # If details or act.name already match after cleaning, avoid duplication
-        if ' - ' in details:
-            lines.append(f"{details}")
-        elif state:
-            if state.lower() in details.lower():
-                lines.append(f"{details}")
-            else:
-                lines.append(f"{state} - {details}")
-        else:
-            lines.append(f"{details}")
+    # Case A: details already contains ' - ' (e.g. YouTube Video: "Artist - Title")
+    if details and ' - ' in details:
+        full_title = f"<b>{details}</b>"
+
+    # Case B: Separate Track and Artist (e.g. YouTube Music / Spotify: details="Title", state="Artist")
+    elif details and state and state.lower() not in details.lower():
+        full_title = f"<b>{state} - {details}</b>"
+
+    # Case C: Single field provided
+    elif details:
+        full_title = f"<b>{details}</b>"
     elif state:
-        lines.append(f"{state}")
+        full_title = f"<b>{state}</b>"
 
-    # Ignore generic app names or text already shown in title
+    # Append season info if present (unbolded, on the same line)
+    if season_info:
+        full_title = f"{full_title} {season_info}".strip() if full_title else season_info
+
+    if full_title:
+        lines.append(full_title)
+
+    # Secondary app / URL info
     if large_text and large_text.lower() not in ["youtube", "youtube music", "spotify", "kodi"]:
         if not any(large_text.lower() in line.lower() for line in lines):
             if act.large_url:
@@ -89,7 +109,7 @@ def build_content_lines(act: Activity) -> list:
 
 def format_act(act: Activity, time_prefix: str) -> str:
     result = build_content_lines(act)
-    result.append(f"\r\n<b>{time_prefix} {act.get_elapsed_time()}</b>")
+    result.append(f"\r\n{time_prefix} {act.get_elapsed_time()}")
     return "\n".join(result)
 
 def format_tl_act(act: Activity) -> str:
