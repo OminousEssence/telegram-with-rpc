@@ -16,13 +16,13 @@
     <tr>
       <td align="center">
         <img src="./res/movies_new.png" width="500"><br>
-        <sub>Movies through Kodi with <a href="https://github.com/Hiumee/service.discord.richpresence">rpc plugin</a></sub>
+        <sub>Movies through <a href="https://github.com/xbmc/xbmc">Kodi</a> with <a href="https://github.com/Hiumee/service.discord.richpresence">rpc plugin</a></sub>
       </td>
     </tr>
     <tr>
       <td align="center">
         <img src="./res/series_new.png" width="500"><br>
-        <sub>TV Series through Kodi with <a href="https://github.com/Hiumee/service.discord.richpresence">rpc plugin</a></sub>
+        <sub>TV Series through <a href="https://github.com/xbmc/xbmc">Kodi</a> with <a href="https://github.com/Hiumee/service.discord.richpresence">rpc plugin</a></sub>
       </td>
     </tr>
   </table>
