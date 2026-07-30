@@ -9,33 +9,27 @@ from utils.proxy import DISCORD_PROXY
 cache = {}
 
 def resize_img(image: Image, size: tuple = (1024, 1024)) -> Image:
-    # 1. High-quality LANCZOS downsampling preserves fine details and sharpness
+    # High-quality LANCZOS downsampling preserves fine details
     resized = ImageOps.fit(image, size, method=Image.Resampling.LANCZOS, centering=(0.5, 0.4))
     
-    # 2. Subtle contrast & sharpness enhancement for dark/ambient game covers
+    # Subtle contrast & sharpness enhancement
     enhancer = ImageEnhance.Sharpness(resized)
-    resized = enhancer.enhance(1.15)
-    
-    return resized
+    return enhancer.enhance(1.15)
 
 def create_bg(image: Image) -> Image:
     avg_color = get_avg_color(image)
-    # Slightly richer ambient fill for padding
     darker_color = tuple(int(c * 0.45) for c in avg_color)
-    background = Image.new("RGB", image.size, darker_color)
-    return background
+    return Image.new("RGB", image.size, darker_color)
 
 def get_avg_color(image: Image) -> tuple:
-    image = image.convert("RGB")
-    pixels = list(image.getdata())
-    avg_r = sum([pixel[0] for pixel in pixels]) // len(pixels)
-    avg_g = sum([pixel[1] for pixel in pixels]) // len(pixels)
-    avg_b = sum([pixel[2] for pixel in pixels]) // len(pixels)
-    return (avg_r, avg_g, avg_b)
+    # average color via 1x1 resize
+    one_pixel = image.resize((1, 1)).convert("RGB")
+    return one_pixel.getpixel((0, 0))
 
 def ret_bif(url: str, resize: bool = False) -> BufferedInputFile:
-    if sys.getsizeof(cache) / 1024 >= MAX_ASSET_CACHE_SIZE:
-        logger.debug("Clearing cache . . .")
+    # Check max cache item count
+    if len(cache) >= MAX_ASSET_CACHE_SIZE:
+        logger.debug("Clearing image cache...")
         cache.clear()
     
     HASH = hashlib.md5(url.encode()).hexdigest()
@@ -73,15 +67,19 @@ def ret_bif(url: str, resize: bool = False) -> BufferedInputFile:
         image = resize_img(image)
     
     background = create_bg(image)
-    background.paste(image, (0, 0), image)
+    
+    # Center image on background
+    x = (background.width - image.width) // 2
+    y = (background.height - image.height) // 2
+    background.paste(image, (x, y), image)
     
     ret = io.BytesIO()
-    # Save as full-quality PNG
     background.convert("RGB").save(ret, format="PNG", optimize=True)
     ret.seek(0)
     
-    cache[HASH] = {'file': BufferedInputFile(ret.getvalue(), filename="rpc_asset.png"), 'isResized': resize}
-    return cache[HASH]['file']
+    bif = BufferedInputFile(ret.getvalue(), filename="rpc_asset.png")
+    cache[HASH] = {'file': bif, 'isResized': resize}
+    return bif
 
 def get_empty_avatar() -> BufferedInputFile:
     avatar = Image.new("RGB", (1024, 1024), "#111111")
