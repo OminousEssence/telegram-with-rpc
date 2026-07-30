@@ -1,5 +1,33 @@
 **Most edits are made with AI (Gemini). Do with that info what you will.**
 
+<div align="center">
+  <table>
+    <tr>
+      <td align="center">
+        <img src="./res/ytmusic_new.png" width="500"><br>
+        <sub><a href="https://github.com/pear-devs/pear-desktop">YouTube Music</a> with <a href="https://github.com/lazykern/mprisence">mprisence</a></sub>
+      </td>
+    </tr>
+      <td align="center">
+        <img src="./res/games_new.png" width="500"><br>
+        <sub>Games with any rpc supported launcher</sub>
+      </td>
+    </tr>
+    <tr>
+      <td align="center">
+        <img src="./res/movies_new.png" width="500"><br>
+        <sub>Movies through Kodi with <a href="https://github.com/Hiumee/service.discord.richpresence">rpc plugin</a></sub>
+      </td>
+    </tr>
+    <tr>
+      <td align="center">
+        <img src="./res/series_new.png" width="500"><br>
+        <sub>TV Series through Kodi with <a href="https://github.com/Hiumee/service.discord.richpresence">rpc plugin</a></sub>
+      </td>
+    </tr>
+  </table>
+</div>
+
 <details>
   <summary>Original Readme</summary>
   
