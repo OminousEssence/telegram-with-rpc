@@ -45,7 +45,7 @@ async def telegram_task():
             await asyncio.sleep(5)
             # Re-trigger state sync once reconnected
             if latest_activity is not None:
-                asyncio.create_task(debounced_rpc_update(latest_activity))
+                asyncio.create_task(debounced_rpc_update())
 
 @events.on_call(RPC_UPDATED)
 async def on_call(act: Activity):
@@ -56,18 +56,30 @@ async def on_call(act: Activity):
         pending_update_task.cancel()
         logger.trace("Rapid activity event detected. Resetting debounce timer...")
 
-    pending_update_task = asyncio.create_task(debounced_rpc_update(act))
+    pending_update_task = asyncio.create_task(debounced_rpc_update())
 
-async def debounced_rpc_update(act: Activity):
+async def debounced_rpc_update():
     try:
         await asyncio.sleep(RPC_DEBOUNCE_INTERVAL)
 
-        if act is None:
-            await channel.reset()
+        target_act = latest_activity
+
+        if target_act is None:
+            # First clean up active message post, then reset channel title
             await message.pause()
+            try:
+                await channel.reset()
+            except Exception as e:
+                logger.warning(f"Failed to reset channel title: {e}")
         else:
-            await channel.update(act)
-            await message.run_task(act)
+            # Update title first, so the post appears under the correct title
+            try:
+                await channel.update(target_act)
+            except Exception as e:
+                logger.warning(f"Failed to update channel title: {e}")
+            
+            # Start/update message loop
+            await message.run_task(target_act)
 
     except asyncio.CancelledError:
         pass
