@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from config import SPOTIFY_LOGO_URL
 import discord
 import utils.images
@@ -19,7 +19,7 @@ def get_game_cover_url(game_name: str, app_id: int | str | None = None) -> str |
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
-    # 1. Fetch Discord's official app icon using App ID directly
+    # 1. Fetch Discord's official app icon using App ID
     if app_id:
         try:
             res = requests.get(f"https://discord.com/api/v10/applications/{app_id}/rpc", headers=headers, timeout=5)
@@ -34,15 +34,16 @@ def get_game_cover_url(game_name: str, app_id: int | str | None = None) -> str |
         except Exception as e:
             logger.trace(f"Discord RPC lookup failed: {e}")
 
-    # 2. Query SteamGridDB API for clean Square Grid artwork
-    try:
-        sgdb_url = f"https://www.steamgriddb.com/api/v2/search/autocomplete/{urllib.parse.quote(game_name)}"
-    except Exception:
-        pass
-
-    # 3. Fallback to Steam's clean community app icon
+    # 2. Fallback to Steam Header Image if App ID exists
     if app_id:
         steam_icon_url = f"https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps/{app_id}/header.jpg"
+        try:
+            res = requests.head(steam_icon_url, headers=headers, timeout=3)
+            if res.status_code == 200:
+                GAME_ICON_CACHE[game_name] = steam_icon_url
+                return steam_icon_url
+        except Exception:
+            pass
 
     GAME_ICON_CACHE[game_name] = None
     return None
@@ -126,8 +127,8 @@ class Activity:
             else:
                 self.track_length = None
 
-            self.details = act._details
-            self.state = act._state
+            self.details = act.title
+            self.state = ", ".join(act.artists) if act.artists else getattr(act, 'artist', "")
             self.large_text = None
             self.large_url = None
 
@@ -146,9 +147,10 @@ class Activity:
 
     def get_elapsed_time(self) -> str:
         if self.start_time is None:
-            self.start_time = datetime.now()
+            return "00:00"
 
-        elapsed_time = datetime.now().timestamp() - self.start_time.timestamp()
+        now = datetime.now(self.start_time.tzinfo) if self.start_time.tzinfo else datetime.now(timezone.utc)
+        elapsed_time = (now - self.start_time).total_seconds()
         return self.format_time(max(0, int(elapsed_time)))
 
     def get_track_length(self) -> str:
