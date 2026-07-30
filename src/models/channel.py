@@ -15,7 +15,7 @@ class Channel:
 
     async def update(self, act: Activity):
         try:
-            # 1. Safely update channel photo only if a large_image_url is present
+            # 1. Update channel photo
             if act.assets and act.assets.large_image_url:
                 avatar_hash = hashlib.md5(str(act.assets.large_image_url).encode('utf-8')).hexdigest()
                 if avatar_hash != self.last_avatar_hash:
@@ -25,7 +25,10 @@ class Channel:
                         self.last_avatar_hash = avatar_hash
                         logger.info(f"Channel {Fore.WHITE}PHOTO{Fore.BLUE} updated.")
             else:
-                self.last_avatar_hash = None
+                # Reset to default empty avatar if no cover image is provided
+                if self.last_avatar_hash is not None:
+                    await telegram.edit_photo(self.chat_id, images.get_empty_avatar())
+                    self.last_avatar_hash = None
 
             # 2. Update channel title
             if act.type == discord.ActivityType.playing:
@@ -45,10 +48,10 @@ class Channel:
             await telegram.edit_title(self.chat_id, ACT_NONE_TITLE)
             await telegram.edit_photo(self.chat_id, images.get_empty_avatar())
         except Exception as ex:
-            logger.error(ex)
+            logger.error(f"Channel reset exception: {ex}")
         
         self.last_avatar_hash = None
         self.last_title = None
 
     def get_title_with_type_prefix(self, act: Activity):
-        return ACTIVITY_TITLES[act.type]
+        return ACTIVITY_TITLES.get(act.type, "⏱️")
