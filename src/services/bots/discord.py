@@ -30,7 +30,7 @@ async def init():
 
     # init client
     ds_proxy = get_proxy()
-    if ds_proxy == "":
+    if not ds_proxy:
         client = discord.Client(intents=intents)
     else:
         logger.info("* Init with proxy.")
@@ -61,31 +61,29 @@ async def handle_act(act):
     global last_rpc_hash
     
     if act is None:
-        if last_rpc_hash != None:
+        if last_rpc_hash is not None:
             last_rpc_hash = None
             await events.call(RPC_UPDATED, None)
         return
     
     ret_act = Activity(act)
     
-    # Allow games (playing) to bypass the image check if they lack a cover/large image.
-    # Only enforce image assets for music/video/watching streams.
+    # Games (playing) bypass cover requirement, but non-games require artwork
     if act.type != discord.ActivityType.playing and ret_act.assets.large_image_url is None:
-        if last_rpc_hash != None:
+        if last_rpc_hash is not None:
             last_rpc_hash = None
             await events.call(RPC_UPDATED, None)
         return
     
-    rpc_hash = hashlib.md5(str(act.to_dict()).encode('utf-8')).hexdigest()
+    raw_data = getattr(act, 'to_dict', lambda: str(act))()
+    rpc_hash = hashlib.md5(str(raw_data).encode('utf-8')).hexdigest()
     
     if rpc_hash != last_rpc_hash:
         last_rpc_hash = rpc_hash
         logger.debug(f"RPC Updated! [{ret_act.name} - {ret_act.details}]")
-        logger.trace(str(act.to_dict()))
         await events.call(RPC_UPDATED, ret_act)
 
 async def watcher_loop():
-    global last_rpc_hash
     await ready_event.wait()
     
     guild = client.get_guild(GUILD_ID)
@@ -93,14 +91,14 @@ async def watcher_loop():
         logger.error(f'Guild [ID: {GUILD_ID}] not found!')
         return
     
-    member = guild.get_member(MEMBER_ID)
-    if member is None:
-        logger.error(f'Member [ID: {MEMBER_ID}] not found!')
-        return
-    
     while True:
-        act = get_valid_act(member.activities)
-        await handle_act(act) 
+        member = guild.get_member(MEMBER_ID)
+        if member:
+            act = get_valid_act(member.activities)
+            await handle_act(act)
+        else:
+            logger.warning(f'Member [ID: {MEMBER_ID}] not found in cache.')
+
         await asyncio.sleep(RPC_WATCHER_INTERVAL / 1000)
 
 async def start_client():
