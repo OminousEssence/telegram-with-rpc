@@ -33,7 +33,7 @@ async def startup():
     logger.info(f'@{me.username} is ready!')
 
 # Helper to retry network operations automatically
-async def safe_api_call(coro_func, *args, retries=5, delay=3, **kwargs):
+async def safe_api_call(coro_func, *args, retries=3, delay=1, **kwargs):
     for attempt in range(retries):
         try:
             return await coro_func(*args, **kwargs)
