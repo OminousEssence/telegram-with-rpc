@@ -1,17 +1,23 @@
 import asyncio
 import dotenv, os, sys
+from loguru import logger
+
+# 1. Load environment variables early & set trace logging before imports
+dotenv.load_dotenv()
+
+if os.getenv('ENABLE_TRACE_LOGGING') == 'true':
+    logger.remove()
+    logger.add(sys.stderr, level="TRACE")
+
 from services.bots import discord
 from services.bots import telegram
 from models.channel import Channel
 from models.activity import Activity
 from models.message import Message
 from services.events import events, RPC_UPDATED
-from loguru import logger
-from config import MESSAGE_TASK_INTERVAL
+from config import MESSAGE_TASK_INTERVAL, RPC_DEBOUNCE_INTERVAL
 
-dotenv.load_dotenv()
-
-if (MESSAGE_TASK_INTERVAL < 5):
+if MESSAGE_TASK_INTERVAL < 5:
     logger.warning("The interval is too low. A timeout from Telegram is possible!")
 
 pending_update_task: asyncio.Task | None = None
@@ -54,7 +60,7 @@ async def on_call(act: Activity):
 
 async def debounced_rpc_update(act: Activity):
     try:
-        await asyncio.sleep(3)
+        await asyncio.sleep(RPC_DEBOUNCE_INTERVAL)
 
         if act is None:
             await channel.reset()
@@ -74,10 +80,6 @@ async def main():
         telegram_task()
     ]
     await asyncio.gather(*tasks)
-
-if (os.getenv('ENABLE_TRACE_LOGGING') == 'true'):
-    logger.remove()
-    logger.add(sys.stderr, level="TRACE")
 
 if __name__ == '__main__':
     asyncio.run(main())
