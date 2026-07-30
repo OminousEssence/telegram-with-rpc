@@ -59,7 +59,7 @@ class Message:
                 pass
             logger.trace("Task canceled.")
 
-        # Always delete the old message on activity change to force a brand new post
+        # Delete the old active message on activity change
         if self.message_id:
             try:
                 await telegram.delete_message(self.chat_id, self.message_id)
@@ -87,25 +87,18 @@ class Message:
 
     async def handle(self, act: Activity):
         try:
-            if self.message_id is None:
-                await self.cleanup_orphan()
-
-            small_hash = hashlib.md5(str(act.assets.small_image_url).encode('utf-8')).hexdigest() if act.assets.small_image_url else None
-            
             while True:
                 try:
                     text_content = formatter.get_message_text(act)
+                    small_url = act.assets.small_image_url if act.assets else None
+                    small_hash = hashlib.md5(str(small_url).encode('utf-8')).hexdigest() if small_url else None
 
                     if self.message_id is None:
-                        # Ensures lingering state is wiped before posting new message
-                        await self.cleanup_orphan()
-
-                        new_id = await telegram.send_message(self.chat_id, text_content, act.assets.get_small_image())
+                        new_id = await telegram.send_message(self.chat_id, text_content, act.assets.get_small_image() if act.assets else None)
                         self.update_message_id(new_id)
                         self.last_img_hash = small_hash
                     else:
-                        # Updates timestamp/duration in-place while staying on the exact same song/game
-                        if act.assets.small_image_url:
+                        if small_url:
                             if self.last_img_hash != small_hash:
                                 await telegram.edit_media(self.chat_id, self.message_id, text_content, act.assets.get_small_image())
                                 self.last_img_hash = small_hash
