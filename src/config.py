@@ -2,6 +2,7 @@ from discord import ActivityType
 
 RPC_WATCHER_INTERVAL = 1000 # interval between requests (ms)
 MESSAGE_TASK_INTERVAL = 10 # interval between requests (s)
+RPC_DEBOUNCE_INTERVAL = 5  # debounce delay before updating Telegram (s)
 MAX_ASSET_CACHE_SIZE = 4 # maximum size of assets cache (mb)
 SORT_ACTIVITIES = True # sorting, prioritizes activity with the game
 TRY_AGAIN_INTERVAL = 10 # try again on telegram api timeout (s)
