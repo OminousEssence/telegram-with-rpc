@@ -31,9 +31,12 @@ def load_state() -> dict | None:
 class Message:
     def __init__(self, chat_id: int):
         self.chat_id = chat_id
-        self.message_id = None
+        state = load_state()
+        self.message_id = state["message_id"] if state else None
         self.last_task = None
         self.last_img_hash = None
+        self.has_media = False  # Track if current post is photo or text
+        self.current_act = None
 
     async def cleanup_orphan(self):
         state = load_state()
@@ -46,36 +49,25 @@ class Message:
             finally:
                 save_state(self.chat_id, None)
 
-    def update_message_id(self, new_id: int | None):
+    def update_message_id(self, new_id: int | None, has_media: bool = False):
         self.message_id = new_id
+        self.has_media = has_media if new_id else False
         save_state(self.chat_id, new_id)
 
     async def run_task(self, act: Activity):
-        if self.last_task:
-            self.last_task.cancel()
-            try:
-                await self.last_task
-            except asyncio.CancelledError:
-                pass
-            logger.trace("Task canceled.")
+        self.current_act = act
 
-        # Delete the old active message on activity change
-        if self.message_id:
-            try:
-                await telegram.delete_message(self.chat_id, self.message_id)
-            except Exception as e:
-                logger.trace(f"Failed to delete old message on activity change: {e}")
-            finally:
-                self.update_message_id(None)
-        else:
-            await self.cleanup_orphan()
-
-        self.last_task = asyncio.create_task(self.handle(act))
-        logger.trace("Task started.")
+        # Start handle task if not running
+        if self.last_task is None or self.last_task.done():
+            if self.message_id is None:
+                await self.cleanup_orphan()
+            self.last_task = asyncio.create_task(self.handle())
+            logger.trace("Message loop task started.")
 
     async def pause(self):
         if self.last_task:
             self.last_task.cancel()
+            self.last_task = None
         try:
             if self.message_id:
                 await telegram.delete_message(self.chat_id, self.message_id)
@@ -83,39 +75,64 @@ class Message:
             logger.trace(f"Pause delete exception ignored: {e}")
         finally:
             self.update_message_id(None)
-            logger.trace("Task stopped.")
+            self.last_img_hash = None
+            logger.trace("Message post deleted and loop stopped.")
 
-    async def handle(self, act: Activity):
+    async def handle(self):
         try:
             while True:
+                act = self.current_act
+                if not act:
+                    await asyncio.sleep(MESSAGE_TASK_INTERVAL)
+                    continue
+
                 try:
                     text_content = formatter.get_message_text(act)
                     small_url = act.assets.small_image_url if act.assets else None
                     small_hash = hashlib.md5(str(small_url).encode('utf-8')).hexdigest() if small_url else None
+                    incoming_has_media = small_url is not None
+
+                    # If transitioning between Photo Post <-> Text Post, delete old post first
+                    if self.message_id and (self.has_media != incoming_has_media):
+                        try:
+                            await telegram.delete_message(self.chat_id, self.message_id)
+                        except Exception:
+                            pass
+                        self.update_message_id(None)
+                        self.last_img_hash = None
 
                     if self.message_id is None:
-                        new_id = await telegram.send_message(self.chat_id, text_content, act.assets.get_small_image() if act.assets else None)
-                        self.update_message_id(new_id)
+                        # Create a new post
+                        if incoming_has_media:
+                            new_id = await telegram.send_message(
+                                self.chat_id, 
+                                text_content, 
+                                act.assets.get_small_image()
+                            )
+                            self.update_message_id(new_id, has_media=True)
+                        else:
+                            new_id = await telegram.send_message(self.chat_id, text_content)
+                            self.update_message_id(new_id, has_media=False)
+                        
                         self.last_img_hash = small_hash
                     else:
-                        if small_url:
+                        # Edit in-place when message type remains identical
+                        if incoming_has_media:
                             if self.last_img_hash != small_hash:
-                                await telegram.edit_media(self.chat_id, self.message_id, text_content, act.assets.get_small_image())
+                                # New cover image: edit photo + caption
+                                await telegram.edit_media(
+                                    self.chat_id, 
+                                    self.message_id, 
+                                    text_content, 
+                                    act.assets.get_small_image()
+                                )
                                 self.last_img_hash = small_hash
                             else:
-                                try:
-                                    await telegram.edit_media(self.chat_id, self.message_id, text_content)
-                                except TelegramAPIError:
-                                    await telegram.edit_text(self.chat_id, self.message_id, text_content)
+                                # Same cover: edit caption/timer only
+                                await telegram.edit_media(self.chat_id, self.message_id, text_content)
                         else:
-                            try:
-                                await telegram.edit_text(self.chat_id, self.message_id, text_content)
-                            except TelegramAPIError:
-                                try:
-                                    await telegram.edit_media(self.chat_id, self.message_id, text_content)
-                                except TelegramAPIError:
-                                    pass
-                            self.last_img_hash = None
+                            # Text-only edit (Game to Game)
+                            await telegram.edit_text(self.chat_id, self.message_id, text_content)
 
                 except TelegramAPIError as ex:
                     logger.error(f"Telegram API Error during edit: {ex}")
