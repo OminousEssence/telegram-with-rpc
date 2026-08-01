@@ -17,13 +17,22 @@ class Channel:
         try:
             # 1. Update channel photo
             if act.assets and act.assets.large_image_url:
-                avatar_hash = hashlib.md5(str(act.assets.large_image_url).encode('utf-8')).hexdigest()
-                if avatar_hash != self.last_avatar_hash:
-                    photo = act.assets.get_large_image()
-                    if photo:
-                        await telegram.edit_photo(self.chat_id, photo)
-                        self.last_avatar_hash = avatar_hash
-                        logger.info(f"Channel {Fore.WHITE}PHOTO{Fore.BLUE} updated.")
+                url_str = str(act.assets.large_image_url)
+
+                # Filter out generic Discord app fallback icons (/app-assets/)
+                is_http = url_str.startswith("http://") or url_str.startswith("https://")
+                is_app_logo = "app-assets" in url_str.lower()
+
+                if is_http and not is_app_logo:
+                    avatar_hash = hashlib.md5(url_str.encode('utf-8')).hexdigest()
+                    if avatar_hash != self.last_avatar_hash:
+                        photo = act.assets.get_large_image()
+                        if photo:
+                            await telegram.edit_photo(self.chat_id, photo)
+                            self.last_avatar_hash = avatar_hash
+                            logger.info(f"Channel {Fore.WHITE}PHOTO{Fore.BLUE} updated.")
+                else:
+                    logger.trace(f"Skipping channel photo update for app logo: {url_str}")
             else:
                 # Reset to default empty avatar if no cover image is provided
                 if self.last_avatar_hash is not None:
