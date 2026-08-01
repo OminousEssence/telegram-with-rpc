@@ -35,7 +35,7 @@ class Message:
         self.message_id = state["message_id"] if state else None
         self.last_task = None
         self.last_img_hash = None
-        self.has_media = False  # Track if current post is photo or text
+        self.has_media = False  # Track post format: True = Photo Post, False = Text Post
         self.current_act = None
 
     async def cleanup_orphan(self):
@@ -88,11 +88,12 @@ class Message:
 
                 try:
                     text_content = formatter.get_message_text(act)
-                    small_url = act.assets.small_image_url if act.assets else None
-                    small_hash = hashlib.md5(str(small_url).encode('utf-8')).hexdigest() if small_url else None
-                    incoming_has_media = small_url is not None
+                    
+                    # Determine media intent: YouTube Music / Songs always use photo posts. Games always use text posts.
+                    is_music = act.name.lower() in ["youtube music", "spotify"] or "listening" in str(act.type).lower()
+                    incoming_has_media = is_music
 
-                    # If transitioning between Photo Post <-> Text Post, delete old post first
+                    # only recreate post if switching between Game <-> Music
                     if self.message_id and (self.has_media != incoming_has_media):
                         try:
                             await telegram.delete_message(self.chat_id, self.message_id)
@@ -101,13 +102,18 @@ class Message:
                         self.update_message_id(None)
                         self.last_img_hash = None
 
+                    # Get image asset (fallback to default image if music asset isn't ready yet)
+                    photo = act.assets.get_small_image() if act.assets else None
+                    small_url = act.assets.small_image_url if act.assets else None
+                    small_hash = hashlib.md5(str(small_url).encode('utf-8')).hexdigest() if small_url else "default"
+
                     if self.message_id is None:
                         # Create a new post
                         if incoming_has_media:
                             new_id = await telegram.send_message(
                                 self.chat_id, 
                                 text_content, 
-                                act.assets.get_small_image()
+                                photo
                             )
                             self.update_message_id(new_id, has_media=True)
                         else:
@@ -116,22 +122,22 @@ class Message:
                         
                         self.last_img_hash = small_hash
                     else:
-                        # Edit in-place when message type remains identical
+                        # Edit in-place
                         if incoming_has_media:
                             if self.last_img_hash != small_hash:
-                                # New cover image: edit photo + caption
+                                # New cover image available: update media + text
                                 await telegram.edit_media(
                                     self.chat_id, 
                                     self.message_id, 
                                     text_content, 
-                                    act.assets.get_small_image()
+                                    photo
                                 )
                                 self.last_img_hash = small_hash
                             else:
-                                # Same cover: edit caption/timer only
+                                # Same cover image: edit text/timer caption only
                                 await telegram.edit_media(self.chat_id, self.message_id, text_content)
                         else:
-                            # Text-only edit (Game to Game)
+                            # Game -> Game text edit
                             await telegram.edit_text(self.chat_id, self.message_id, text_content)
 
                 except TelegramAPIError as ex:
