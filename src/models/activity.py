@@ -67,6 +67,8 @@ class ActivityAssets:
 
 class Activity:
     def __init__(self, act: discord.Activity | discord.Game | discord.Spotify):
+        now_utc = datetime.now(timezone.utc)
+
         if isinstance(act, discord.Game):
             self.name = act.name
             app_id = getattr(act, 'application_id', None)
@@ -77,11 +79,11 @@ class Activity:
 
             self.assets = ActivityAssets(large_url, getattr(act, 'small_image_url', None))
             self.type = getattr(act, 'type', discord.ActivityType.playing)
-            self.start_time = getattr(act, 'start', None)
+            self.start_time = getattr(act, 'start', None) or now_utc
             self.end_time = getattr(act, 'end', None)
 
-            if self.start_time and self.end_time:
-                self.track_length = self.end_time - self.start_time
+            if getattr(act, 'start', None) and self.end_time:
+                self.track_length = self.end_time - getattr(act, 'start')
             else:
                 self.track_length = None
 
@@ -100,11 +102,13 @@ class Activity:
 
             self.assets = ActivityAssets(large_url, getattr(act, 'small_image_url', None))
             self.type = act.type
-            self.start_time = act.start
+            
+            # Fallback to current time if Discord Activity start time is None
+            self.start_time = act.start or now_utc
             self.end_time = act.end
 
-            if self.start_time and self.end_time:
-                self.track_length = self.end_time - self.start_time
+            if act.start and self.end_time:
+                self.track_length = self.end_time - act.start
             else:
                 self.track_length = None
 
@@ -119,11 +123,11 @@ class Activity:
             self.name = "Spotify"
             self.assets = ActivityAssets(act.album_cover_url, SPOTIFY_LOGO_URL)
             self.type = discord.ActivityType.listening
-            self.start_time = act.start
+            self.start_time = act.start or now_utc
             self.end_time = act.end
 
-            if self.start_time and self.end_time:
-                self.track_length = self.end_time - self.start_time
+            if act.start and self.end_time:
+                self.track_length = self.end_time - act.start
             else:
                 self.track_length = None
 
