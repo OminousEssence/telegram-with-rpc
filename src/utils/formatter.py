@@ -31,7 +31,7 @@ def get_prefix(type: ActivityType):
         prefix = "⏱️"
     return prefix
 
-def clean_text(text: str) -> str:
+def clean_text(text: str, is_game: bool = False) -> str:
     # Removes video junk words, game RPC host device info, surrounding brackets, and converts Season/Episode formats.
     if not text:
         return ""
@@ -42,26 +42,30 @@ def clean_text(text: str) -> str:
     # 2. Strip game device/platform prefixes ("Playing on - ")
     text = re.sub(GAME_JUNK_PATTERN, '', text, flags=re.IGNORECASE).strip()
 
-    # 3. Convert Season X Episode Y -> (SX-EY)
-    season_pattern = r'[Ss]eason\s*(\d+)[,\s\-_]+[Ee]pisode\s*(\d+)'
-    def season_repl(match):
-        s_num, e_num = int(match.group(1)), int(match.group(2))
-        return f"(S{s_num:02d}-E{e_num:02d})"
-    
-    text = re.sub(season_pattern, season_repl, text)
+    # Skip video/music junk pattern stripping if this activity is a Game
+    if not is_game:
+        # 3. Convert Season X Episode Y -> (SX-EY)
+        season_pattern = r'[Ss]eason\s*(\d+)[,\s\-_]+[Ee]pisode\s*(\d+)'
+        def season_repl(match):
+            s_num, e_num = int(match.group(1)), int(match.group(2))
+            return f"(S{s_num:02d}-E{e_num:02d})"
+        
+        text = re.sub(season_pattern, season_repl, text)
 
-    # 4. Strip brackets/parentheses containing video junk keywords
-    text = re.sub(fr'\s*[\(\[]\s*(?:{VIDEO_JUNK_PATTERN})\s*[\)\]]', '', text, flags=re.IGNORECASE)
-    
-    # 5. Strip standalone video junk keywords
-    text = re.sub(fr'\s*(?:{VIDEO_JUNK_PATTERN})', '', text, flags=re.IGNORECASE)
+        # 4. Strip brackets/parentheses containing video junk keywords
+        text = re.sub(fr'\s*[\(\[]\s*(?:{VIDEO_JUNK_PATTERN})\s*[\)\]]', '', text, flags=re.IGNORECASE)
+        
+        # 5. Strip standalone video junk keywords
+        text = re.sub(fr'\s*(?:{VIDEO_JUNK_PATTERN})', '', text, flags=re.IGNORECASE)
 
     return text.strip()
 
 def build_content_lines(act: Activity) -> list:
-    details = clean_text(act.details) if act.details else ""
-    state = clean_text(act.state) if act.state else ""
-    large_text = clean_text(act.large_text) if act.large_text else ""
+    is_game = (act.type == ActivityType.playing)
+
+    details = clean_text(act.details, is_game=is_game) if act.details else ""
+    state = clean_text(act.state, is_game=is_game) if act.state else ""
+    large_text = clean_text(act.large_text, is_game=is_game) if act.large_text else ""
 
     # Extract season/episode formatting if present
     SEASON_FORMAT_REGEX = r'^\(S\d+-E\d+\)$'
