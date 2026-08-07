@@ -16,13 +16,13 @@
     <tr>
       <td align="center">
         <img src="./res/movies_new.png" width="500"><br>
-        <sub>Movies with <a href="https://github.com/xbmc/xbmc">Kodi</a> + <a href="https://github.com/Hiumee/service.discord.richpresence">rpc plugin</a></sub>
+        <sub>Movies with <a href="https://github.com/afonsojramos/discrakt">Discrakt</a></sub>
       </td>
     </tr>
     <tr>
       <td align="center">
         <img src="./res/series_new.png" width="500"><br>
-        <sub>TV Series with <a href="https://github.com/xbmc/xbmc">Kodi</a> + <a href="https://github.com/Hiumee/service.discord.richpresence">rpc plugin</a></sub>
+        <sub>TV Series with <a href="https://github.com/afonsojramos/discrakt">Discrakt</a></sub>
       </td>
     </tr>
   </table>
